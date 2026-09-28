@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ETL &amp; Medallion Architecture</title>
+<style>
+  body {
+    font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    max-width: 850px;
+    margin: 0 auto;
+    padding: 24px 16px 80px;
+    line-height: 1.6;
+    color: #1a1a1a;
+    background: #ffffff;
+  }
+  h1 { font-size: 1.7em; margin-bottom: 4px; }
+  h2 { margin-top: 2.2em; border-bottom: 1px solid #ddd; padding-bottom: 6px; }
+  h3 { margin-top: 1.4em; }
+  p.subtitle { color: #555; margin-top: 0; }
+  nav { margin: 20px 0 30px; padding: 12px 0; border-bottom: 1px solid #ddd; border-top: 1px solid #ddd; }
+  nav ul { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 16px; }
+  nav a { color: #1a1a1a; text-decoration: none; }
+  nav a:hover { text-decoration: underline; }
+  pre {
+    background: #f5f5f5;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    padding: 12px 14px;
+    overflow-x: auto;
+    font-size: 0.92em;
+  }
+  code { font-family: "SFMono-Regular", Consolas, Menlo, monospace; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 10px 0 18px;
+    font-size: 0.92em;
+  }
+  th, td {
+    border: 1px solid #ccc;
+    padding: 6px 10px;
+    text-align: left;
+  }
+  th { background: #eee; }
+  .layers {
+    display: flex;
+    gap: 8px;
+    align-items: stretch;
+    margin: 24px 0;
+    flex-wrap: wrap;
+  }
+  .layer-box {
+    flex: 1;
+    min-width: 180px;
+    border: 1px solid #999;
+    border-radius: 3px;
+    padding: 14px;
+  }
+  .layer-box h3 { margin-top: 0; }
+  .arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.6em;
+    color: #666;
+    padding: 0 4px;
+  }
+  .note {
+    background: #f5f5f5;
+    border-left: 3px solid #999;
+    padding: 8px 12px;
+    margin: 12px 0;
+    font-size: 0.95em;
+  }
+  footer { margin-top: 60px; border-top: 1px solid #ddd; padding-top: 16px; color: #555; font-size: 0.9em; }
+  a.pagelink { color: #1a1a1a; }
+  @media (max-width: 600px) {
+    .layers { flex-direction: column; }
+    .arrow { transform: rotate(90deg); padding: 4px 0; }
+  }
+</style>
+</head>
+<body>
+
+<h1>ETL &amp; Medallion Architecture</h1>
+<p class="subtitle">A brief, beginner-friendly explanation, using the same fictional rice trading case study from the SQL practice page.</p>
+
+<nav>
+  <ul>
+    <li><a href="#etl">What is ETL?</a></li>
+    <li><a href="#medallion">What is Medallion Architecture?</a></li>
+    <li><a href="#bronze">Bronze</a></li>
+    <li><a href="#silver">Silver</a></li>
+    <li><a href="#gold">Gold</a></li>
+    <li><a href="sql-joins-practice.html">&larr; SQL Practice</a></li>
+  </ul>
+</nav>
+
+<h2 id="etl">What is ETL?</h2>
+<p>
+<strong>ETL</strong> stands for <strong>Extract, Transform, Load</strong>. It's the process of pulling data out of
+source systems ("Extract"), cleaning and reshaping it &mdash; joining tables, applying calculations, removing bad
+rows &mdash; ("Transform"), and then writing the result somewhere it can be used, like a reporting table ("Load").
+</p>
+<p>
+In our case study: SAP, the M2M rate system, the inventory system, and the currency system are the sources.
+The transformation is everything we practiced on the previous page &mdash; joins, netting off damage, adjusting
+for stock, converting currency. The "load" is writing the final result somewhere a report or dashboard can read it.
+</p>
+
+<h2 id="medallion">What is Medallion Architecture?</h2>
+<p>
+<strong>Medallion Architecture</strong> is a simple way of organizing that ETL process into three layers, each
+one cleaner than the last:
+</p>
+<ul>
+  <li><strong>Bronze</strong> &mdash; raw data, landed as-is, no changes</li>
+  <li><strong>Silver</strong> &mdash; cleaned, joined, and adjusted data</li>
+  <li><strong>Gold</strong> &mdash; aggregated, business-ready data used for reporting</li>
+</ul>
+<p>Data flows one direction: Bronze &rarr; Silver &rarr; Gold. Each layer is a table (or set of tables) in its own
+right, not just a temporary step &mdash; so you can always go back and check what the raw data looked like before
+any transformation happened.</p>
+
+<div class="layers">
+  <div class="layer-box">
+    <h3>Bronze</h3>
+    <p>Raw data, as received from each source. No joins, no calculations.</p>
+  </div>
+  <div class="arrow">&rarr;</div>
+  <div class="layer-box">
+    <h3>Silver</h3>
+    <p>Cleaned and joined. Damage netted off, prices adjusted, currency converted.</p>
+  </div>
+  <div class="arrow">&rarr;</div>
+  <div class="layer-box">
+    <h3>Gold</h3>
+    <p>Aggregated and tagged for accounting. Ready for dashboards and reports.</p>
+  </div>
+</div>
+
+<h2 id="bronze">Bronze Layer &mdash; Raw Sources</h2>
+<p>Four raw tables, landed exactly as they come from their source systems &mdash; no transformation at all:</p>
+<table>
+<tr><th>Table</th><th>Source system</th><th>What it contains</th></tr>
+<tr><td><code>contracts</code></td><td>SAP</td><td>Finished good/raw material mapping, contract dates, shippers, SOP quantities, USD rate</td></tr>
+<tr><td><code>m2m_rates</code></td><td>M2M system</td><td>Rejection/paddy byproduct rate list</td></tr>
+<tr><td><code>inventory_damage</code></td><td>Inventory system</td><td>Damaged item records per contract</td></tr>
+<tr><td><code>currency_rates</code></td><td>Currency system</td><td>Daily USD &rarr; INR conversion rates</td></tr>
+</table>
+<p class="note">At Bronze, nothing is joined and nothing is calculated. If SAP sends a typo, Bronze has the typo too &mdash;
+that's expected, it's a raw copy.</p>
+
+<h2 id="silver">Silver Layer &mdash; Cleaned &amp; Joined</h2>
+<p>
+This is where the <strong>joins</strong> from the practice page happen. Silver takes the Bronze tables and:
+</p>
+<ul>
+  <li><strong>LEFT JOINs</strong> <code>contracts</code> to <code>inventory_damage</code> so every contract is kept, even
+  ones with no damage</li>
+  <li><strong>GROUP BYs</strong> the damage records per contract, then nets them off <code>total_sop</code> to get
+  <code>pending_sop</code></li>
+  <li><strong>INNER JOINs</strong> to <code>stock_levels</code> to apply the stock-based price adjustment</li>
+  <li><strong>INNER JOINs</strong> to <code>currency_rates</code> (matched by date) to convert the rate to INR</li>
+</ul>
+<p>The result is one clean row per contract, with pricing and currency already sorted out &mdash; but not yet
+aggregated for reporting.</p>
+<p class="note">See Part 1 and Part 3 of the <a class="pagelink" href="sql-joins-practice.html">SQL Practice page</a>
+for the exact join logic used here.</p>
+
+<h2 id="gold">Gold Layer &mdash; Reporting-Ready</h2>
+<p>
+Gold takes the Silver output and tags/aggregates it for business use &mdash; this is where the
+<strong>GROUP BY</strong> and <strong>window function</strong> logic from the practice page comes in:
+</p>
+<ul>
+  <li>Joins to <code>gl_accounts</code> to tag each row with a GL code, so finance can slice the report by ledger account</li>
+  <li><code>GROUP BY shipper</code> or <code>GROUP BY gl_code</code> for management summaries</li>
+  <li><code>RANK()</code> to show top shippers by sales value</li>
+  <li>Running totals (<code>SUM() OVER (...)</code>) to track cumulative sales over time per shipper</li>
+</ul>
+<p>This is the <strong>Final Output</strong> table &mdash; the one a BI dashboard or finance report would actually
+query. It's small, aggregated, and business-friendly compared to the raw Bronze tables.</p>
+
+<table>
+<tr><th>Layer</th><th>Row count (this example)</th><th>Used by</th></tr>
+<tr><td>Bronze</td><td>4 raw tables, ~20 rows total</td><td>Data engineers, auditing/debugging</td></tr>
+<tr><td>Silver</td><td>6 rows (one per contract, enriched)</td><td>Analysts building reports</td></tr>
+<tr><td>Gold</td><td>6 rows, tagged with GL codes, or fewer if grouped by shipper</td><td>Dashboards, finance, management reporting</td></tr>
+</table>
+
+<h2>Why bother with three layers instead of one big query?</h2>
+<ul>
+  <li><strong>Debugging:</strong> if a number looks wrong in the report, you can check Silver, then Bronze, to find
+  exactly where it went wrong</li>
+  <li><strong>Reuse:</strong> Silver can feed more than one Gold report without redoing the joins each time</li>
+  <li><strong>Trust:</strong> Bronze is never modified, so you always have an unaltered copy of what the source
+  system actually sent</li>
+</ul>
+
+<footer>
+  <p>See also: <a class="pagelink" href="sql-joins-practice.html">SQL Practice: Joins &amp; Analytical Functions</a></p>
+</footer>
+
+</body>
+</html>

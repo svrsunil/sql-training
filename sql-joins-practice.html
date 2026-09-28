@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SQL Practice: Fundamentals, Joins &amp; Analytical Functions</title>
+<style>
+  body {
+    font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    max-width: 850px;
+    margin: 0 auto;
+    padding: 24px 16px 80px;
+    line-height: 1.6;
+    color: #1a1a1a;
+    background: #ffffff;
+  }
+  h1 { font-size: 1.7em; margin-bottom: 4px; }
+  h2 { margin-top: 2.2em; border-bottom: 1px solid #ddd; padding-bottom: 6px; }
+  h3 { margin-top: 1.6em; }
+  h4 { margin-top: 1.6em; margin-bottom: 4px; }
+  p.subtitle { color: #555; margin-top: 0; }
+  nav { margin: 20px 0 30px; padding: 12px 0; border-bottom: 1px solid #ddd; border-top: 1px solid #ddd; }
+  nav ul { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 16px; }
+  nav a { color: #1a1a1a; text-decoration: none; }
+  nav a:hover { text-decoration: underline; }
+  pre {
+    background: #f5f5f5;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    padding: 12px 14px;
+    overflow-x: auto;
+    font-size: 0.92em;
+  }
+  code { font-family: "SFMono-Regular", Consolas, Menlo, monospace; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 10px 0 18px;
+    font-size: 0.92em;
+  }
+  th, td {
+    border: 1px solid #ccc;
+    padding: 6px 10px;
+    text-align: left;
+  }
+  th { background: #eee; }
+  details {
+    border-left: 3px solid #ccc;
+    padding: 6px 12px;
+    margin: 10px 0;
+    background: #fafafa;
+  }
+  summary {
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .exercise {
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    padding: 14px 16px;
+    margin: 18px 0;
+  }
+  .exercise h4 { margin-top: 0; }
+  .topic {
+    color: #555;
+    font-style: italic;
+    margin: 0 0 8px;
+  }
+  .note {
+    background: #f5f5f5;
+    border-left: 3px solid #999;
+    padding: 8px 12px;
+    margin: 12px 0;
+    font-size: 0.95em;
+  }
+  footer { margin-top: 60px; border-top: 1px solid #ddd; padding-top: 16px; color: #555; font-size: 0.9em; }
+  a.pagelink { color: #1a1a1a; }
+</style>
+</head>
+<body>
+
+<h1>SQL Practice: Fundamentals, Joins &amp; Analytical Functions</h1>
+<p class="subtitle">Case study: a fictional rice trading business (all names/companies are mocked, not real). Learn the concept, then try the exercise before checking the answer.</p>
+
+<nav>
+  <ul>
+    <li><a href="#data">The Data</a></li>
+    <li><a href="#joins">Part 1: Joins</a></li>
+    <li><a href="#window">Part 2: Analytical Functions</a></li>
+    <li><a href="#final">Part 3: Putting It Together</a></li>
+    <li><a href="#fundamentals">Part 4: SQL Fundamentals</a></li>
+    <li><a href="#cheatsheet">Cheat Sheet</a></li>
+    <li><a href="medallion-architecture.html">ETL &amp; Medallion Architecture &rarr;</a></li>
+  </ul>
+</nav>
+
+<h2 id="data">The Data</h2>
+<p>
+Seven small tables, all from the same fictional rice trading business (company and material names are mocked
+for this tutorial). <code>contracts</code> is the core fact table (one row per sales contract). The others feed
+into it: damage gets netted off, stock levels adjust the price, currency converts USD to INR, GL codes tag each
+material for accounting, and <code>raw_materials</code> is the master list each material code points back to.
+<code>m2m_rates</code> is a separate rate reference used later as a bonus.
+</p>
+
+<h3>raw_materials <em>(master/dimension table &mdash; used in Part 4)</em></h3>
+<table>
+<tr><th>rm_code (Primary Key)</th><th>rm_description</th></tr>
+<tr><td>RM101</td><td>Premium Long Grain Rice</td></tr>
+<tr><td>RM102</td><td>Aromatic Basmati Rice</td></tr>
+<tr><td>RM103</td><td>Golden Sella Rice</td></tr>
+<tr><td>RM104</td><td>Creamy Sella Rice</td></tr>
+<tr><td>RM105</td><td>Broken Rice Grade B</td></tr>
+</table>
+
+<h3>contracts</h3>
+<table>
+<tr><th>contract_no</th><th>rm_code</th><th>rm_description</th><th>contract_date</th><th>shipper</th><th>total_sop</th><th>usd_rate</th></tr>
+<tr><td>CN2001</td><td>RM101</td><td>Premium Long Grain Rice</td><td>2026-01-05</td><td>Golden Harbor Trading LLC</td><td>1000</td><td>850</td></tr>
+<tr><td>CN2002</td><td>RM101</td><td>Premium Long Grain Rice</td><td>2026-02-10</td><td>Northfield Foods Ltd</td><td>800</td><td>860</td></tr>
+<tr><td>CN2003</td><td>RM102</td><td>Aromatic Basmati Rice</td><td>2026-01-15</td><td>Coastal Mart Distributors</td><td>1200</td><td>900</td></tr>
+<tr><td>CN2004</td><td>RM102</td><td>Aromatic Basmati Rice</td><td>2026-03-01</td><td>Coastal Mart Distributors</td><td>600</td><td>910</td></tr>
+<tr><td>CN2005</td><td>RM103</td><td>Golden Sella Rice</td><td>2026-02-20</td><td>Sunrise Wholesale Group</td><td>500</td><td>940</td></tr>
+<tr><td>CN2006</td><td>RM104</td><td>Creamy Sella Rice</td><td>2026-03-10</td><td>Pacific Grain Partners</td><td>700</td><td>920</td></tr>
+</table>
+
+<h3>inventory_damage</h3>
+<table>
+<tr><th>contract_no</th><th>rm_code</th><th>rm_description</th><th>damaged_qty</th><th>damage_date</th></tr>
+<tr><td>CN2001</td><td>RM101</td><td>Premium Long Grain Rice</td><td>50</td><td>2026-01-20</td></tr>
+<tr><td>CN2001</td><td>RM101</td><td>Premium Long Grain Rice</td><td>20</td><td>2026-01-25</td></tr>
+<tr><td>CN2003</td><td>RM102</td><td>Aromatic Basmati Rice</td><td>100</td><td>2026-01-28</td></tr>
+<tr><td>CN2005</td><td>RM103</td><td>Golden Sella Rice</td><td>30</td><td>2026-02-25</td></tr>
+</table>
+<p class="note">Note: CN2002, CN2004 and CN2006 have <strong>no</strong> damage records at all &mdash; useful later for LEFT JOIN practice.</p>
+
+<h3>currency_rates</h3>
+<table>
+<tr><th>rate_date</th><th>usd_to_inr_rate</th></tr>
+<tr><td>2026-01-05</td><td>83.5</td></tr>
+<tr><td>2026-01-15</td><td>83.6</td></tr>
+<tr><td>2026-02-10</td><td>84.0</td></tr>
+<tr><td>2026-02-20</td><td>84.1</td></tr>
+<tr><td>2026-03-01</td><td>84.5</td></tr>
+<tr><td>2026-03-10</td><td>84.6</td></tr>
+</table>
+
+<h3>stock_levels</h3>
+<table>
+<tr><th>rm_code</th><th>rm_description</th><th>stock_qty</th><th>price_adjustment_pct</th></tr>
+<tr><td>RM101</td><td>Premium Long Grain Rice</td><td>5000</td><td>0.02</td></tr>
+<tr><td>RM102</td><td>Aromatic Basmati Rice</td><td>3000</td><td>0.01</td></tr>
+<tr><td>RM103</td><td>Golden Sella Rice</td><td>1000</td><td>0.05</td></tr>
+<tr><td>RM104</td><td>Creamy Sella Rice</td><td>800</td><td>0.03</td></tr>
+<tr><td>RM105</td><td>Broken Rice Grade B</td><td>1500</td><td>0.015</td></tr>
+</table>
+<p class="note">Note: <strong>Broken Rice Grade B</strong> has stock but no matching row in <code>contracts</code>
+&mdash; useful later for finding "unmatched" rows.</p>
+
+<h3>gl_accounts</h3>
+<table>
+<tr><th>rm_code</th><th>rm_description</th><th>gl_code</th><th>gl_description</th></tr>
+<tr><td>RM101</td><td>Premium Long Grain Rice</td><td>GL4001</td><td>Long Grain Rice Sales</td></tr>
+<tr><td>RM102</td><td>Aromatic Basmati Rice</td><td>GL4002</td><td>Basmati Rice Sales</td></tr>
+<tr><td>RM103</td><td>Golden Sella Rice</td><td>GL4003</td><td>Golden Sella Sales</td></tr>
+<tr><td>RM104</td><td>Creamy Sella Rice</td><td>GL4004</td><td>Creamy Sella Sales</td></tr>
+</table>
+
+<h3>m2m_rates <em>(bonus, standalone reference table)</em></h3>
+<table>
+<tr><th>material_code</th><th>material_description</th><th>variety</th><th>price_per_mt</th><th>cd</th><th>net_price</th></tr>
+<tr><td>900001</td><td>Rejection - Grade A</td><td>Rejection</td><td>47000</td><td>2</td><td>46060</td></tr>
+<tr><td>900002</td><td>Rejection - Sella</td><td>Rejection</td><td>44000</td><td>2</td><td>43120</td></tr>
+<tr><td>900003</td><td>Sortex Rejection</td><td>Rejection</td><td>26000</td><td>2</td><td>25480</td></tr>
+<tr><td>900004</td><td>Paddy - Batch 1</td><td>Paddy</td><td>42000</td><td>2</td><td>41160</td></tr>
+<tr><td>900005</td><td>Paddy - Batch 2</td><td>Paddy</td><td>39500</td><td>2</td><td>38710</td></tr>
+</table>
+
+<h2 id="joins">Part 1: Joins</h2>
+<p>
+A <strong>JOIN</strong> combines rows from two or more tables based on a matching column. <strong>INNER JOIN</strong>
+keeps only rows that match in both tables. <strong>LEFT JOIN</strong> keeps every row from the left table,
+filling in <code>NULL</code> where there's no match on the right. <strong>RIGHT JOIN</strong> is the mirror of
+LEFT JOIN (keeps every row from the right table). <strong>FULL JOIN</strong> keeps everything from both sides,
+matched or not. <strong>CROSS JOIN</strong> returns every possible combination of rows from both tables (no
+matching condition at all). A <strong>SELF JOIN</strong> isn't a new keyword &mdash; it's just joining a table
+to itself, useful for comparing rows within the same table.
+</p>
+
+<div class="exercise">
+<h4>Exercise 1 &mdash; INNER JOIN</h4>
+<p class="topic">Topic: INNER JOIN &mdash; keeps only rows that match in both tables</p>
+<p>List every contract with its shipper, contract date, USD rate, and the matching <code>usd_to_inr_rate</code>
+from <code>currency_rates</code> for that same date.</p>
+<details><summary>Hint</summary>
+<p>Join <code>contracts</code> to <code>currency_rates</code> where <code>contract_date</code> equals <code>rate_date</code>.</p>
+</details>
+<details><summary>Show Answer</summary>
+<pre><code><strong>SELECT</strong> c.contract_no, c.shipper, c.contract_date, c.usd_rate, cr.usd_to_inr_rate
+<strong>FROM</strong> contracts c
+<strong>INNER JOIN</strong> currency_rates cr <strong>ON</strong> c.contract_date = cr.rate_date;</code></pre>
+<table>
+<tr><th>contract_no</th><th>shipper</th><th>contract_date</th><th>usd_rate</th><th>usd_to_inr_rate</th></tr>
+<tr><td>CN2001</td><td>Golden Harbor Trading LLC</td><td>2026-01-05</td><td>850</td><td>83.5</td></tr>
+<tr><td>CN2002</td><td>Northfield Foods Ltd</td><td>2026-02-10</td><td>860</td><td>84.0</td></tr>
+<tr><td>CN2003</td><td>Coastal Mart Distributors</td><td>2026-01-15</td><td>900</td><td>83.6</td></tr>
+<tr><td>CN2004</td><td>Coastal Mart Distributors</td><td>2026-03-01</td><td>910</td><td>84.5</td></tr>
+<tr><td>CN2005</td><td>Sunrise Wholesale Group</td><td>2026-02-20</td><td>940</td><td>84.1</td></tr>
+<tr><td>CN2006</td><td>Pacific Grain Partners</td><td>2026-03-10</td><td>920</td><td>84.6</td></tr>
+</table>
+</details>
+</div>
+
+<div class="exercise">
+<h4>Exercise 2 &mdash; LEFT JOIN</h4>
+<p class="topic">Topic: LEFT JOIN &mdash; keeps every row from the left table, even without a match</p>
+<p>List all contracts and any damage records against them, <strong>including</strong> contracts with no damage at all
+(show blank/NULL for those).</p>
+<details><summary>Hint</summary>
+<p><code>contracts</code> must be the left table. If you use INNER JOIN here, CN2002, CN2004 and CN2006 will disappear
+completely &mdash; that's the bug LEFT JOIN avoids.</p>
+</details>
+<details><summary>Show Answer</summary>
+<pre><code><strong>SELECT</strong> c.contract_no, c.rm_description, d.damaged_qty
+<strong>FROM</strong> contracts c
+<strong>LEFT JOIN</strong> inventory_damage d <strong>ON</strong> c.contract_no = d.contract_no
+<strong>ORDER BY</strong> c.contract_no;</code></pre>
+<table>
+<tr><th>contract_no</th><th>rm_description</th><th>damaged_qty</th></tr>
+<tr><td>CN2001</td><td>Premium Long Grain Rice</td><td>50</td></tr>
+<tr><td>CN2001</td><td>Premium Long Grain Rice</td><td>20</td></tr>
+<tr><td>CN2002</td><td>Premium Long Grain Rice</td><td>NULL</td></tr>
+<tr><td>CN2003</td><td>Aromatic Basmati Rice</td><td>100</td></tr>
+<tr><td>CN2004</td><td>Aromatic Basmati Rice</td><td>NULL</td></tr>
+<tr><td>CN2005</td><td>Golden Sella Rice</td><td>30</td></tr>
+<tr><td>CN2006</td><td>Creamy Sella Rice</td><td>NULL</td></tr>
+</table>
+<p>Note CN2001 appears twice &mdash; it has two damage records. This is why the next step needs GROUP BY.</p>
+</details>
+</div>
+
+<div class="exercise">
+<h4>Exercise 3 &mdash; Multi-table INNER JOIN</h4>
+<p class="topic">Topic: chaining several JOINs together across 3+ tables</p>
+<p>For every contract, show its <code>rm_description</code>, the stock's <code>price_adjustment_pct</code>, and its
+<code>gl_code</code> &mdash; joining three tables together.</p>
+<details><summary>Hint</summary>
+<p>Join <code>contracts</code> to <code>stock_levels</code> on <code>rm_description</code>, then join to
+<code>gl_accounts</code> on <code>rm_description</code> as well.</p>
+</details>
+<details><summary>Show Answer</summary>
+<pre><code><strong>SELECT</strong> c.contract_no, c.rm_description, s.price_adjustment_pct, g.gl_code
+<strong>FROM</strong> contracts c
+<strong>INNER JOIN</strong> stock_levels s <strong>ON</strong> c.rm_description = s.rm_description
+<strong>INNER JOIN</strong> gl_accounts g <strong>ON</strong> c.rm_description = g.rm_description;</code></pre>
+<table>
+<tr><th>contract_no</th><th>rm_description</th><th>price_adjustment_pct</th><th>gl_code</th></tr>
+<tr><td>CN2001</td><td>Premium Long Grain Rice</td><td>0.02</td><td>GL4001</td></tr>
+<tr><td>CN2002</td><td>Premium Long Grain Rice</td><td>0.02</td><td>GL4001</td></tr>
+<tr><td>CN2003</td><td>Aromatic Basmati Rice</td><td>0.01</td><td>GL4002</td></tr>
+<tr><td>CN2004</td><td>Aromatic Basmati Rice</td><td>0.01</td><td>GL4002</td></tr>
+<tr><td>CN2005</td><td>Golden Sella Rice</td><td>0.05</td><td>GL4003</td></tr>
+<tr><td>CN2006</td><td>Creamy Sella Rice</td><td>0.03</td><td>GL4004</td></tr>
+</table>
+</details>
+</div>
+
+<div class="exercise">
+<h4>Exercise 4 &mdash; Finding unmatched rows (LEFT JOIN + IS NULL)</h4>
+<p class="topic">Topic: LEFT JOIN + IS NULL &mdash; finds rows with no match in another table</p>
+<p>Find raw materials in <code>stock_levels</code> that currently have <strong>no</strong> contract at all.</p>
+<details><summary>Hint</summary>
+<p>Start from <code>stock_levels</code> (the table you want everything from), LEFT JOIN to <code>contracts</code>,
+then filter where the contract side is <code>NULL</code>.</p>
+</details>
+<details><summary>Show Answer</summary>
+<pre><code><strong>SELECT</strong> s.rm_description, s.stock_qty
+<strong>FROM</strong> stock_levels s
+<strong>LEFT JOIN</strong> contracts c <strong>ON</strong> s.rm_description = c.rm_description
+<strong>WHERE</strong> c.contract_no <strong>IS NULL</strong>;</code></pre>
+<table>
+<tr><th>rm_description</th><th>stock_qty</th></tr>
+<tr><td>Broken Rice Grade B</td><td>1500</td></tr>
+</table>
+<p>This "LEFT JOIN + WHERE right-side IS NULL" pattern is the standard way to find rows in table A with no match in table B.</p>
+</details>
+</div>
+
+<div class="exercise">
+<h4>Exercise 5 &mdash; JOIN with a filter</h4>
+<p class="topic">Topic: filtering the result of a JOIN with WHERE</p>
+<p>Show only the contracts that post to GL code <code>GL4001</code>.</p>
+<details><summary>Hint</summary>
+<p>Join <code>contracts</code> to <code>gl_accounts</code> on <code>rm_description</code>, then filter with
+<code>WHERE</code> after the join.</p>
+</details>
+<details><summary>Show Answer</summary>
+<pre><code><strong>SELECT</strong> c.contract_no, c.rm_description, c.shipper, g.gl_code
+<strong>FROM</strong> contracts c
+<strong>INNER JOIN</strong> gl_accounts g <strong>ON</strong> c.rm_description = g.rm_description
+<strong>WHERE</strong> g.gl_code = 'GL4001';</code></pre>
+<table>
+<tr><th>contract_no</th><th>rm_description</th><th>shipper</th><th>gl_code</th></tr>
+<tr><td>CN2001</td><td>Premium Long Grain Rice</td><td>Golden Harbor Trading LLC</td><td>GL4001</td></tr>
+<tr><td>CN2002</td><td>Premium Long Grain Rice</td><td>Northfield Foods Ltd</td><td>GL4001</td></tr>
+</table>
+</details>
+</div>
+
+<div class="exercise">
+<h4>Exercise 6 &mdash; Computing adjusted rates with a 3-way join</h4>
+<p class="topic">Topic: INNER JOIN across multiple tables to feed a calculation</p>
+<p>For every contract, calculate the stock-adjusted USD rate (<code>usd_rate &times; (1 + price_adjustment_pct)</code>)
+and the resulting INR rate (adjusted rate &times; <code>usd_to_inr_rate</code>).</p>
+<details><summary>Hint</summary>
+<p>You need <code>contracts</code> joined to both <code>stock_levels</code> (for the adjustment %) and
+<code>currency_rates</code> (for the FX rate on that contract's date).</p>
+</details>
+<details><summary>Show Answer</summary>
+<pre><code><strong>SELECT</strong>
+  c.contract_no,
+  c.rm_description,
+  c.usd_rate * (1 + s.price_adjustment_pct) <strong>AS</strong> adjusted_rate,
+  c.usd_rate * (1 + s.price_adjustment_pct) * cr.usd_to_inr_rate <strong>AS</strong> inr_rate
+<strong>FROM</strong> contracts c
+<strong>INNER JOIN</strong> stock_levels s <strong>ON</strong> c.rm_description = s.rm_description
+<strong>INNER JOIN</strong> currency_rates cr <strong>ON</strong> c.contract_date = cr.rate_date;</code></pre>
+<table>
+<tr><th>contract_no</th><th>rm_description</th><th>adjusted_rate</th><th>inr_rate</th></tr>
+<tr><td>CN2001</td><td>Premium Long Grain Rice</td><td>867.0</td><td>72,394.5</td></tr>
+<tr><td>CN2002</td><td>Premium Long Grain Rice</td><td>877.2</td><td>73,724.8</td></tr>
+<tr><td>CN2003</td><td>Aromatic Basmati Rice</td><td>909.0</td><td>75,992.4</td></tr>
+<tr><td>CN2004</td><td>Aromatic Basmati Rice</td><td>919.1</td><td>77,663.95</td></tr>
+<tr><td>CN2005</td><td>Golden Sella Rice</td><td>987.0</td><td>82,986.7</td></tr>
+<tr><td>CN2006</td><td>Creamy Sella Rice</td><td>947.6</td><td>80,166.96</td></tr>
+</table>
+</details>
+</div>
+
+<div class="exercise">
+<h4>Exercise 7 &mdash; RIGHT JOIN</h4>
+<p class="topic">Topic: RIGHT JOIN &mdash; keeps every row from the right table, even without a match</p>
+<p>List every material in <code>stock_levels</code> along with any matching contract (shipper, contract number)
+&mdash; including materials with no contracts at all.</p>
+<details><summary>Hint</summary>
+<p>RIGHT JOIN keeps everything from the right-hand table. Put <code>stock_levels</code> on the right, or
+equivalently, write it as a LEFT JOIN with the tables swapped.</p>
+</details>
+<details><summary>Show Answer</summary>
+<pre><code><strong>SELECT</strong> c.contract_no, c.shipper, s.rm_description, s.stock_qty
+<strong>FROM</strong> contracts c
+<strong>RIGHT JOIN</strong> stock_levels s <strong>ON</strong> c.rm_description = s.rm_description
+<strong>ORDER BY</strong> s.rm_description;</code></pre>
+<table>
+<tr><th>contract_no</th><th>shipper</th><th>rm_description</th><th>stock_qty</th></tr>
+<tr><td>CN2003</td><td>Coastal Mart Distributors</td><td>Aromatic Basmati Rice</td><td>3000</td></tr>
+<tr><td>CN2004</td><td>Coastal Mart Distributors</td><td>Aromatic Basmati Rice</td><td>3000</td></tr>
+<tr><td>NULL</td><td>NULL</td><td>Broken Rice Grade B</td><td>1500</td></tr>
+<tr><td>CN2006</td><td>Pacific Grain Partners</td><td>Creamy Sella Rice</td><td>800</td></tr>
+<tr><td>CN2005</td><td>Sunrise Wholesale Group</td><td>Golden Sella Rice</td><td>1000</td></tr>
+<tr><td>CN2001</td><td>Golden Harbor Trading LLC</td><td>Premium Long Grain Rice</td><td>5000</td></tr>
+<tr><td>CN2002</td><td>Northfield Foods Ltd</td><td>Premium Long Grain Rice</td><td>5000</td></tr>
+</table>
+<p>Broken Rice Grade B has no matching contract, so its contract columns come back <code>NULL</code> &mdash;
+same idea as Exercise 4, just approached from the opposite direction.</p>
+</details>
+</div>
+
+<div class="exercise">
+<h4>Exercise 8 &mdash; FULL JOIN</h4>
+<p class="topic">Topic: FULL JOIN &mdash; keeps every row from both tables, matched or not</p>
+<p>Combine <code>contracts</code> and <code>stock_levels</code> so you see every contract <strong>and</strong>
+every stock record, matched where possible &mdash; nothing dropped from either side.</p>
+<details><summary>Hint</summary>
+<p>FULL JOIN = LEFT JOIN + RIGHT JOIN combined. Since every contract already has a stock match in this data,
+the only "unmatched" row will be Broken Rice Grade B on the stock side.</p>
+</details>
+<details><summary>Show Answer</summary>
+<pre><code><strong>SELECT</strong> c.contract_no, <strong>COALESCE</strong>(c.rm_description, s.rm_description) <strong>AS</strong> rm_description, c.shipper, s.stock_qty
+<strong>FROM</strong> contracts c
+<strong>FULL JOIN</strong> stock_levels s <strong>ON</strong> c.rm_description = s.rm_description
+<strong>ORDER BY</strong> rm_description, c.contract_no;</code></pre>
+<table>
+<tr><th>contract_no</th><th>rm_description</th><th>shipper</th><th>stock_qty</th></tr>
+<tr><td>CN2003</td><td>Aromatic Basmati Rice</td><td>Coastal Mart Distributors</td><td>3000</td></tr>
+<tr><td>CN2004</td><td>Aromatic Basmati Rice</td><td>Coastal Mart Distributors</td><td>3000</td></tr>
+<tr><td>NULL</td><td>Broken Rice Grade B</td><td>NULL</td><td>1500</td></tr>
+<tr><td>CN2006</td><td>Creamy Sella Rice</td><td>Pacific Grain Partners</td><td>800</td></tr>
+<tr><td>CN2005</td><td>Golden Sella Rice</td><td>Sunrise Wholesale Group</td><td>1000</td></tr>
+<tr><td>CN2001</td><td>Premium Long Grain Rice</td><td>Golden Harbor Trading LLC</td><td>5000</td></tr>
+<tr><td>CN2002</td><td>Premium Long Grain Rice</td><td>Northfield Foods Ltd</td><td>5000</td></tr>
+</table>
+<p>In this dataset every contract already has a stock match, so this FULL JOIN returns the same 7 rows as the
+RIGHT JOIN above. FULL JOIN only looks different from LEFT/RIGHT when there are unmatched rows on
+<em>both</em> sides at once.</p>
+</details>
+</div>
+
+<div class="exercise">
+<h4>Exercise 9 &mdash; CROSS JOIN</h4>
+<p class="topic">Topic: CROSS JOIN &mdash; every combination of rows from two tables</p>
+<p>Build a coverage matrix of every shipper against every GL code (even combinations that don't exist yet)
+&mdash; useful for a reporting template that needs a row for every shipper/GL combination.</p>
+<details><summary>Hint</summary>
+<p>CROSS JOIN has no <code>ON</code> clause &mdash; it returns every combination of rows from both tables
+(a Cartesian product). 5 distinct shippers &times; 4 GL codes = 20 rows.</p>
+</details>
+<details><summary>Show Answer</summary>
+<pre><code><strong>SELECT DISTINCT</strong> c.shipper, g.gl_code
+<strong>FROM</strong> contracts c
+<strong>CROSS JOIN</strong> gl_accounts g
+<strong>ORDER BY</strong> c.shipper, g.gl_code;</code></pre>
+<table>
+<tr><th>shipper</th><th>gl_code</th></tr>
+<tr><td>Coastal Mart Distributors</td><td>GL4001</td></tr>
+<tr><td>Coastal Mart Distributors</td><td>GL4002</td></tr>
+<tr><td>Coastal Mart Distributors</td><td>GL4003</td></tr>
+<tr><td>Coastal Mart Distributors</td><td>GL4004</td></tr>
+<tr><td>Golden Harbor Trading LLC</td><td>GL4001</td></tr>
+<tr><td>Golden Harbor Trading LLC</td><td>GL4002</td></tr>
+<tr><td colspan="2">&hellip; 12 more rows follow, one for each remaining shipper &times; GL code combination (20 total)</td></tr>
+</table>
+<p>Most of these combinations don't have any real sales yet &mdash; that's expected. CROSS JOIN is for building a
+full grid, not for matching real relationships.</p>
+</details>
+</div>
+
+<div class="exercise">
+<h4>Exercise 10 &mdash; SELF JOIN</h4>
+<p class="topic">Topic: SELF JOIN &mdash; joining a table to itself</p>
+<p>Find pairs of contracts signed by the same shipper (to see which shippers have repeat business), showing
+both contract numbers and dates side by side.</p>
+<details><summary>Hint</summary>
+<p>A self join is just joining a table to itself using two aliases. Use <code>a.contract_no &lt; b.contract_no</code>
+to avoid matching a contract with itself and to avoid showing the same pair twice.</p>
+</details>
+<details><summary>Show Answer</summary>
+<pre><code><strong>SELECT</strong> a.shipper, a.contract_no <strong>AS</strong> contract_a, a.contract_date <strong>AS</strong> date_a,
+  b.contract_no <strong>AS</strong> contract_b, b.contract_date <strong>AS</strong> date_b
+<strong>FROM</strong> contracts a
+<strong>JOIN</strong> contracts b <strong>ON</strong> a.shipper = b.shipper <strong>AND</strong> a.contract_no &lt; b.contract_no;</code></pre>
+<table>
+<tr><th>shipper</th><th>contract_a</th><th>date_a</th><th>contract_b</th><th>date_b</th></tr>
+<tr><td>Coastal Mart Distributors</td><td>CN2003</td><td>2026-01-15</td><td>CN2004</td><td>2026-03-01</td></tr>
+</table>
+<p>Coastal Mart Distributors is the only shipper with more than one contract, so it's the only pair that shows up
+&mdash; this is the classic self-join pattern for comparing rows within the same table.</p>
+</details>
+</div>
+
+<h2 id="window">Part 2: Analytical (Window) Functions</h2>
+<p>
+<strong>GROUP BY</strong> collapses many rows into one row per group. A <strong>window function</strong>
+(<code>OVER (...)</code>) computes a value <em>across</em> a group of rows but keeps every row &mdash; nothing
+collapses. <code>PARTITION BY</code> defines the group; <code>ORDER BY</code> inside the <code>OVER</code>
+defines the order for running calculations. Any aggregate function &mdash; <code>SUM</code>, <code>COUNT</code>,
+<code>MIN</code>, <code>MAX</code>, <code>AVG</code> &mdash; becomes a window function just by adding
+<code>OVER (...)</code> after it.
+</p>
+
+<div class="exercise">
+<h4>Exercise 11 &mdash; ROW_NUMBER()</h4>
+<p class="topic">Topic: ROW_NUMBER() &mdash; numbers rows sequentially within each partition</p>
+<p>Number each shipper's contracts in the order they were signed.</p>
+<details><summary>Hint</summary>
+<p><code>PARTITION BY shipper</code> restarts the count for each shipper; <code>ORDER BY contract_date</code>
+decides the numbering order.</p>
+</details>
+<details><summary>Show Answer</summary>
+<pre><code><strong>SELECT</strong> contract_no, shipper, contract_date,
+  <strong>ROW_NUMBER() OVER</strong> (<strong>PARTITION BY</strong> shipper <strong>ORDER BY</strong> contract_date) <strong>AS</strong> contract_seq
+<strong>FROM</strong> contracts;</code></pre>
+<table>
+<tr><th>contract_no</th><th>shipper</th><th>contract_date</th><th>contract_seq</th></tr>
+<tr><td>CN2001</td><td>Golden Harbor Trading LLC</td><td>2026-01-05</td><td>1</td></tr>
+<tr><td>CN2003</td><td>Coastal Mart Distributors</td><td>2026-01-15</td><td>1</td></tr>
+<tr><td>CN2004</td><td>Coastal Mart Distributors</td><td>2026-03-01</td><td>2</td></tr>
+<tr><td>CN2005</td><td>Sunrise Wholesale Group</td><td>2026-02-20</td><td>1</td></tr>
+<tr><td>CN2002</td><td>Northfield Foods Ltd</td><td>2026-02-10</td><td>1</td></tr>
+<tr><td>CN2006</td><td>Pacific Grain Partners</td><td>2026-03-10</td><td>1</td></tr>
+</table>
+</details>
+</div>
+
+<div class="exercise">
+<h4>Exercise 12 &mdash; RANK() on aggregated totals</h4>
+<p class="topic">Topic: RANK() &mdash; ranks rows by value within a partition, ties share a rank</p>
+<p>Using each contract's <code>sales_value</code> (<code>total_sop &times; usd_rate</code>, keeping it simple here),
+rank shippers by their total sales value, highest first. Totals per shipper: Golden Harbor Trading LLC = 850,000;
+Northfield Foods Ltd = 688,000; Coastal Mart Distributors = 1,080,000 + 546,000 = 1,626,000; Sunrise Wholesale
+Group = 470,000; Pacific Grain Partners = 644,000.</p>
+<details><summary>Hint</summary>
+<p>First aggregate with <code>GROUP BY shipper</code> in a CTE, then apply <code>RANK() OVER (ORDER BY ...)</code>
+on top of the already-aggregated result.</p>
+</details>
+<details><summary>Show Answer</summary>
+<pre><code><strong>WITH</strong> shipper_totals <strong>AS</strong> (
+  <strong>SELECT</strong> shipper, <strong>SUM</strong>(total_sop * usd_rate) <strong>AS</strong> total_sales_value
+  <strong>FROM</strong> contracts
+  <strong>GROUP BY</strong> shipper
+)
+<strong>SELECT</strong> shipper, total_sales_value,
+  <strong>RANK() OVER</strong> (<strong>ORDER BY</strong> total_sales_value <strong>DESC</strong>) <strong>AS</strong> shipper_rank
+<strong>FROM</strong> shipper_totals;</code></pre>
+<table>
+<tr><th>shipper</th><th>total_sales_value</th><th>shipper_rank</th></tr>
+<tr><td>Coastal Mart Distributors</td><td>1,626,000</td><td>1</td></tr>
+<tr><td>Golden Harbor Trading LLC</td><td>850,000</td><td>2</td></tr>
+<tr><td>Northfield Foods Ltd</td><td>688,000</td><td>3</td></tr>
+<tr><td>Pacific Grain Partners</td><td>644,000</td><td>4</td></tr>
+<tr><td>Sunrise Wholesale Group</td><td>470,000</td><td>5</td></tr>
+</table>
+</details>
+</div>
+
+<div class="exercise">
+<h4>Exercise 13 &mdash; SUM() OVER, running total</h4>
+<p class="topic">Topic: SUM() OVER &mdash; running or partitioned total without collapsing rows</p>
+<p>For Coastal Mart Distributors' two contracts, show a running total of <code>total_sop &times; usd_rate</code>
+ordered by contract date.</p>
+<details><summary>Hint</summary>
+<p><code>SUM(...) OVER (PARTITION BY shipper ORDER BY contract_date)</code> with no extra frame clause
+accumulates by default.</p>
+</details>
+<details><summary>Show Answer</summary>
+<pre><code><strong>SELECT</strong> contract_no, shipper, contract_date, total_sop * usd_rate <strong>AS</strong> sales_value,
+  <strong>SUM</strong>(total_sop * usd_rate) <strong>OVER</strong> (<strong>PARTITION BY</strong> shipper <strong>ORDER BY</strong> contract_date) <strong>AS</strong> running_total
+<strong>FROM</strong> contracts
+<strong>WHERE</strong> shipper = 'Coastal Mart Distributors';</code></pre>
+<table>
+<tr><th>contract_no</th><th>shipper</th><th>contract_date</th><th>sales_value</th><th>running_total</th></tr>
+<tr><td>CN2003</td><td>Coastal Mart Distributors</td><td>2026-01-15</td><td>1,080,000</td><td>1,080,000</td></tr>
+<tr><td>CN2004</td><td>Coastal Mart Distributors</td><td>2026-03-01</td><td>546,000</td><td>1,626,000</td></tr>
+</table>
+</details>
+</div>
+
+<div class="exercise">
+<h4>Exercise 14 &mdash; COUNT() OVER</h4>
+<p class="topic">Topic: COUNT() OVER &mdash; counts rows in a partition without collapsing rows</p>
+<p>For every contract row, show how many total contracts that shipper has, without collapsing any rows.</p>
+<details><summary>Hint</summary>
+<p><code>COUNT(*) OVER (PARTITION BY shipper)</code> &mdash; no <code>ORDER BY</code> needed since you just want
+one total per partition, applied to every row in it.</p>
+</details>
+<details><summary>Show Answer</summary>
+<pre><code><strong>SELECT</strong> contract_no, shipper, contract_date,
+  <strong>COUNT</strong>(*) <strong>OVER</strong> (<strong>PARTITION BY</strong> shipper) <strong>AS</strong> shipper_contract_count
+<strong>FROM</strong> contracts
+<strong>ORDER BY</strong> shipper, contract_date;</code></pre>
+<table>
+<tr><th>contract_no</th><th>shipper</th><th>contract_date</th><th>shipper_contract_count</th></tr>
+<tr><td>CN2003</td><td>Coastal Mart Distributors</td><td>2026-01-15</td><td>2</td></tr>
+<tr><td>CN2004</td><td>Coastal Mart Distributors</td><td>2026-03-01</td><td>2</td></tr>
+<tr><td>CN2001</td><td>Golden Harbor Trading LLC</td><td>2026-01-05</td><td>1</td></tr>
+<tr><td>CN2002</td><td>Northfield Foods Ltd</td><td>2026-02-10</td><td>1</td></tr>
+<tr><td>CN2006</td><td>Pacific Grain Partners</td><td>2026-03-10</td><td>1</td></tr>
+<tr><td>CN2005</td><td>Sunrise Wholesale Group</td><td>2026-02-20</td><td>1</td></tr>
+</table>
+</details>
+</div>
+
+<div class="exercise">
+<h4>Exercise 15 &mdash; MIN() and MAX() OVER</h4>
+<p class="topic">Topic: MIN()/MAX() OVER &mdash; smallest/largest value in a partition, shown on every row</p>
+<p>For every contract, show the minimum and maximum <code>usd_rate</code> ever recorded for that raw material,
+alongside the current contract's own rate.</p>
+<details><summary>Hint</summary>
+<p><code>MIN(usd_rate) OVER (PARTITION BY rm_description)</code> and
+<code>MAX(usd_rate) OVER (PARTITION BY rm_description)</code> &mdash; both computed without collapsing rows.</p>
+</details>
+<details><summary>Show Answer</summary>
+<pre><code><strong>SELECT</strong> contract_no, rm_description, usd_rate,
+  <strong>MIN</strong>(usd_rate) <strong>OVER</strong> (<strong>PARTITION BY</strong> rm_description) <strong>AS</strong> min_rate_for_material,
+  <strong>MAX</strong>(usd_rate) <strong>OVER</strong> (<strong>PARTITION BY</strong> rm_description) <strong>AS</strong> max_rate_for_material
+<strong>FROM</strong> contracts
+<strong>ORDER BY</strong> rm_description, contract_date;</code></pre>
+<table>
+<tr><th>contract_no</th><th>rm_description</th><th>usd_rate</th><th>min_rate_for_material</th><th>max_rate_for_material</th></tr>
+<tr><td>CN2003</td><td>Aromatic Basmati Rice</td><td>900</td><td>900</td><td>910</td></tr>
+<tr><td>CN2004</td><td>Aromatic Basmati Rice</td><td>910</td><td>900</td><td>910</td></tr>
+<tr><td>CN2006</td><td>Creamy Sella Rice</td><td>920</td><td>920</td><td>920</td></tr>
+<tr><td>CN2005</td><td>Golden Sella Rice</td><td>940</td><td>940</td><td>940</td></tr>
+<tr><td>CN2001</td><td>Premium Long Grain Rice</td><td>850</td><td>850</td><td>860</td></tr>
+<tr><td>CN2002</td><td>Premium Long Grain Rice</td><td>860</td><td>850</td><td>860</td></tr>
+</table>
+</details>
+</div>
+
+<div class="exercise">
+<h4>Exercise 16 &mdash; LAG()</h4>
+<p class="topic">Topic: LAG() &mdash; pulls in the value from the previous row in the ordering</p>
+<p>For each raw material, compare each contract's <code>usd_rate</code> to the <em>previous</em> contract's rate
+for the same material (ordered by date), and calculate the change.</p>
+<details><summary>Hint</summary>
+<p><code>LAG(usd_rate) OVER (PARTITION BY rm_description ORDER BY contract_date)</code> pulls the prior row's
+value into the current row. The very first row per material will be <code>NULL</code>.</p>
+</details>
+<details><summary>Show Answer</summary>
+<pre><code><strong>SELECT</strong> contract_no, rm_description, contract_date, usd_rate,
+  <strong>LAG</strong>(usd_rate) <strong>OVER</strong> (<strong>PARTITION BY</strong> rm_description <strong>ORDER BY</strong> contract_date) <strong>AS</strong> prev_rate,
+  usd_rate - <strong>LAG</strong>(usd_rate) <strong>OVER</strong> (<strong>PARTITION BY</strong> rm_description <strong>ORDER BY</strong> contract_date) <strong>AS</strong> rate_change
+<strong>FROM</strong> contracts
+<strong>ORDER BY</strong> rm_description, contract_date;</code></pre>
+<table>
+<tr><th>contract_no</th><th>rm_description</th><th>contract_date</th><th>usd_rate</th><th>prev_rate</th><th>rate_change</th></tr>
+<tr><td>CN2003</td><td>Aromatic Basmati Rice</td><td>2026-01-15</td><td>900</td><td>NULL</td><td>NULL</td></tr>
+<tr><td>CN2004</td><td>Aromatic Basmati Rice</td><td>2026-03-01</td><td>910</td><td>900</td><td>+10</td></tr>
+<tr><td>CN2006</td><td>Creamy Sella Rice</td><td>2026-03-10</td><td>920</td><td>NULL</td><td>NULL</td></tr>
+<tr><td>CN2005</td><td>Golden Sella Rice</td><td>2026-02-20</td><td>940</td><td>NULL</td><td>NULL</td></tr>
+<tr><td>CN2001</td><td>Premium Long Grain Rice</td><td>2026-01-05</td><td>850</td><td>NULL</td><td>NULL</td></tr>
+<tr><td>CN2002</td><td>Premium Long Grain Rice</td><td>2026-02-10</td><td>860</td><td>850</td><td>+10</td></tr>
+</table>
+</details>
+</div>
+
+<div class="exercise">
+<h4>Exercise 17 &mdash; LEAD()</h4>
+<p class="topic">Topic: LEAD() &mdash; pulls in the value from the next row in the ordering</p>
+<p>Same idea as Exercise 16, but look <em>forward</em> to the next contract's rate instead of back.</p>
+<details><summary>Hint</summary>
+<p><code>LEAD()</code> has the same syntax as <code>LAG()</code>, just looking at the next row instead of the
+previous one.</p>
+</details>
+<details><summary>Show Answer</summary>
+<pre><code><strong>SELECT</strong> contract_no, rm_description, contract_date, usd_rate,
+  <strong>LEAD</strong>(usd_rate) <strong>OVER</strong> (<strong>PARTITION BY</strong> rm_description <strong>ORDER BY</strong> contract_date) <strong>AS</strong> next_rate
+<strong>FROM</strong> contracts
+<strong>ORDER BY</strong> rm_description, contract_date;</code></pre>
+<table>
+<tr><th>contract_no</th><th>rm_description</th><th>contract_date</th><th>usd_rate</th><th>next_rate</th></tr>
+<tr><td>CN2003</td><td>Aromatic Basmati Rice</td><td>2026-01-15</td><td>900</td><td>910</td></tr>
+<tr><td>CN2004</td><td>Aromatic Basmati Rice</td><td>2026-03-01</td><td>910</td><td>NULL</td></tr>
+<tr><td>CN2001</td><td>Premium Long Grain Rice</td><td>2026-01-05</td><td>850</td><td>860</td></tr>
+<tr><td>CN2002</td><td>Premium Long Grain Rice</td><td>2026-02-10</td><td>860</td><td>NULL</td></tr>
+</table>
+</details>
+</div>
+
+<div class="exercise">
+<h4>Exercise 18 &mdash; GROUP BY vs Window function, side by side</h4>
+<p class="topic">Topic: GROUP BY collapses rows; window functions keep every row</p>
+<p>Compare: (a) total sales value per shipper using <code>GROUP BY</code> (rows collapse), versus (b) each
+contract's sales value <em>plus</em> its shipper's average, using a window function (rows stay intact).</p>
+<details><summary>Hint</summary>
+<p>(a) is a normal aggregate query. (b) uses <code>AVG(...) OVER (PARTITION BY shipper)</code> with no
+<code>ORDER BY</code> needed since you just want one average per partition, applied to every row.</p>
+</details>
+<details><summary>Show Answer</summary>
+<p><strong>(a) GROUP BY &mdash; collapses to 5 rows (one per shipper):</strong></p>
+<pre><code><strong>SELECT</strong> shipper, <strong>SUM</strong>(total_sop * usd_rate) <strong>AS</strong> total_sales_value
+<strong>FROM</strong> contracts
+<strong>GROUP BY</strong> shipper;</code></pre>
+<p><strong>(b) Window function &mdash; keeps all 6 contract rows:</strong></p>
+<pre><code><strong>SELECT</strong> contract_no, shipper, total_sop * usd_rate <strong>AS</strong> sales_value,
+  <strong>AVG</strong>(total_sop * usd_rate) <strong>OVER</strong> (<strong>PARTITION BY</strong> shipper) <strong>AS</strong> shipper_avg
+<strong>FROM</strong> contracts;</code></pre>
+<table>
+<tr><th>contract_no</th><th>shipper</th><th>sales_value</th><th>shipper_avg</th></tr>
+<tr><td>CN2003</td><td>Coastal Mart Distributors</td><td>1,080,000</td><td>813,000</td></tr>
+<tr><td>CN2004</td><td>Coastal Mart Distributors</td><td>546,000</td><td>813,000</td></tr>
+<tr><td>CN2001</td><td>Golden Harbor Trading LLC</td><td>850,000</td><td>850,000</td></tr>
+<tr><td>CN2002</td><td>Northfield Foods Ltd</td><td>688,000</td><td>688,000</td></tr>
+<tr><td>CN2005</td><td>Sunrise Wholesale Group</td><td>470,000</td><td>470,000</td></tr>
+<tr><td>CN2006</td><td>Pacific Grain Partners</td><td>644,000</td><td>644,000</td></tr>
+</table>
+<p>Six rows in, six rows out &mdash; that's the whole point of a window function versus GROUP BY.</p>
+</details>
+</div>
+
+<h2 id="final">Part 3: Putting It Together</h2>
+<p>
+This is the full query that rebuilds the business's <strong>Final Output</strong> report: net off damage,
+apply the stock-based price adjustment, convert to INR, and tag each row with its GL code &mdash; all in one query
+using a CTE.
+</p>
+<pre><code><strong>WITH</strong> damage_totals <strong>AS</strong> (
+  <strong>SELECT</strong> contract_no, <strong>SUM</strong>(damaged_qty) <strong>AS</strong> damaged_qty
+  <strong>FROM</strong> inventory_damage
+  <strong>GROUP BY</strong> contract_no
+)
+<strong>SELECT</strong>
+  c.contract_no,
+  c.rm_description,
+  c.shipper,
+  g.gl_code,
+  c.total_sop - <strong>COALESCE</strong>(d.damaged_qty, 0) <strong>AS</strong> pending_sop,
+  <strong>ROUND</strong>(c.usd_rate * (1 + s.price_adjustment_pct), 2) <strong>AS</strong> adjusted_rate,
+  <strong>ROUND</strong>(c.usd_rate * (1 + s.price_adjustment_pct) * cr.usd_to_inr_rate, 2) <strong>AS</strong> inr_rate,
+  <strong>ROUND</strong>((c.total_sop - <strong>COALESCE</strong>(d.damaged_qty, 0)) * c.usd_rate * (1 + s.price_adjustment_pct), 2) <strong>AS</strong> sales_value
+<strong>FROM</strong> contracts c
+<strong>LEFT JOIN</strong> damage_totals d <strong>ON</strong> c.contract_no = d.contract_no
+<strong>INNER JOIN</strong> stock_levels s <strong>ON</strong> c.rm_description = s.rm_description
+<strong>INNER JOIN</strong> currency_rates cr <strong>ON</strong> c.contract_date = cr.rate_date
+<strong>INNER JOIN</strong> gl_accounts g <strong>ON</strong> c.rm_description = g.rm_description
+<strong>ORDER BY</strong> c.contract_date;</code></pre>
+
+<table>
+<tr><th>contract_no</th><th>rm_description</th><th>shipper</th><th>gl_code</th><th>pending_sop</th><th>adjusted_rate</th><th>inr_rate</th><th>sales_value</th></tr>
+<tr><td>CN2001</td><td>Premium Long Grain Rice</td><td>Golden Harbor Trading LLC</td><td>GL4001</td><td>930</td><td>867.0</td><td>72,394.5</td><td>806,310</td></tr>
+<tr><td>CN2003</td><td>Aromatic Basmati Rice</td><td>Coastal Mart Distributors</td><td>GL4002</td><td>1100</td><td>909.0</td><td>75,992.4</td><td>999,900</td></tr>
+<tr><td>CN2002</td><td>Premium Long Grain Rice</td><td>Northfield Foods Ltd</td><td>GL4001</td><td>800</td><td>877.2</td><td>73,724.8</td><td>701,760</td></tr>
+<tr><td>CN2005</td><td>Golden Sella Rice</td><td>Sunrise Wholesale Group</td><td>GL4003</td><td>470</td><td>987.0</td><td>82,986.7</td><td>463,890</td></tr>
+<tr><td>CN2004</td><td>Aromatic Basmati Rice</td><td>Coastal Mart Distributors</td><td>GL4002</td><td>600</td><td>919.1</td><td>77,663.95</td><td>551,460</td></tr>
+<tr><td>CN2006</td><td>Creamy Sella Rice</td><td>Pacific Grain Partners</td><td>GL4004</td><td>700</td><td>947.6</td><td>80,166.96</td><td>663,320</td></tr>
+</table>
+
+<p>This result is exactly what feeds the <strong>Gold layer</strong> in the ETL pipeline &mdash; see the
+<a class="pagelink" href="medallion-architecture.html">Medallion Architecture</a> page for how this fits the bigger picture.</p>
+
+<h2 id="fundamentals">Part 4: SQL Fundamentals</h2>
+<p>
+A few foundational concepts that show up throughout the exercises above, explained on their own with a small
+example each.
+</p>
+
+<div class="exercise">
+<h4>Exercise 19 &mdash; Primary Key</h4>
+<p class="topic">Topic: Primary Key &mdash; a column that uniquely identifies each row</p>
+<p>A <strong>Primary Key</strong> must be unique and non-null for every row. Prove that <code>rm_code</code> is a
+valid Primary Key candidate for <code>raw_materials</code> by comparing the total row count to the count of
+distinct <code>rm_code</code> values.</p>
+<details><summary>Hint</summary>
+<p>If <code>COUNT(*)</code> equals <code>COUNT(DISTINCT rm_code)</code>, every value is unique &mdash; no duplicates.</p>
+</details>
+<details><summary>Show Answer</summary>
+<pre><code><strong>SELECT</strong> <strong>COUNT</strong>(*) <strong>AS</strong> total_rows, <strong>COUNT</strong>(<strong>DISTINCT</strong> rm_code) <strong>AS</strong> distinct_codes
+<strong>FROM</strong> raw_materials;</code></pre>
+<table>
+<tr><th>total_rows</th><th>distinct_codes</th></tr>
+<tr><td>5</td><td>5</td></tr>
+</table>
+<p>The two numbers match, confirming <code>rm_code</code> uniquely identifies every row &mdash; that's what makes
+it a valid Primary Key.</p>
+</details>
+</div>
+
+<div class="exercise">
+<h4>Exercise 20 &mdash; Foreign Key</h4>
+<p class="topic">Topic: Foreign Key &mdash; a column referencing a Primary Key in another table</p>
+<p>List every contract with its raw material's full description, using the proper <code>rm_code</code>
+relationship (the Foreign Key) instead of matching on description text.</p>
+<details><summary>Hint</summary>
+<p>Join <code>contracts</code> to <code>raw_materials</code> <code>ON contracts.rm_code = raw_materials.rm_code</code>
+&mdash; this is the Foreign Key relationship: <code>contracts.rm_code</code> must always exist in
+<code>raw_materials.rm_code</code>.</p>
+</details>
+<details><summary>Show Answer</summary>
+<pre><code><strong>SELECT</strong> c.contract_no, c.rm_code, r.rm_description, c.shipper
+<strong>FROM</strong> contracts c
+<strong>INNER JOIN</strong> raw_materials r <strong>ON</strong> c.rm_code = r.rm_code
+<strong>ORDER BY</strong> c.contract_no;</code></pre>
+<table>
+<tr><th>contract_no</th><th>rm_code</th><th>rm_description</th><th>shipper</th></tr>
+<tr><td>CN2001</td><td>RM101</td><td>Premium Long Grain Rice</td><td>Golden Harbor Trading LLC</td></tr>
+<tr><td>CN2002</td><td>RM101</td><td>Premium Long Grain Rice</td><td>Northfield Foods Ltd</td></tr>
+<tr><td>CN2003</td><td>RM102</td><td>Aromatic Basmati Rice</td><td>Coastal Mart Distributors</td></tr>
+<tr><td>CN2004</td><td>RM102</td><td>Aromatic Basmati Rice</td><td>Coastal Mart Distributors</td></tr>
+<tr><td>CN2005</td><td>RM103</td><td>Golden Sella Rice</td><td>Sunrise Wholesale Group</td></tr>
+<tr><td>CN2006</td><td>RM104</td><td>Creamy Sella Rice</td><td>Pacific Grain Partners</td></tr>
+</table>
+<p>A Foreign Key doesn't just help joins &mdash; it also stops bad data from getting in. A real database with this
+constraint would reject a new contract row that used <code>RM999</code> if that code didn't already exist in
+<code>raw_materials</code>.</p>
+</details>
+</div>
+
+<div class="exercise">
+<h4>Exercise 21 &mdash; Indexing</h4>
+<p class="topic">Topic: Indexing &mdash; a lookup shortcut that speeds up searches and joins</p>
+<p><code>contract_date</code> is used in almost every join and filter on this page. Write the statement that
+creates an index on it, and explain in one sentence why that helps.</p>
+<details><summary>Hint</summary>
+<p><code>CREATE INDEX</code> doesn't return rows &mdash; it changes how the database looks up data, so there's no
+"result table" for this one, just the statement and the reasoning.</p>
+</details>
+<details><summary>Show Answer</summary>
+<pre><code><strong>CREATE INDEX</strong> idx_contracts_contract_date <strong>ON</strong> contracts (contract_date);</code></pre>
+<p>Without an index, every join or filter on <code>contract_date</code> has to scan the whole table row by row.
+An index lets the database jump straight to matching rows instead &mdash; like using a book's index instead of
+reading every page to find a topic. Primary Key and Foreign Key columns are usually indexed automatically for the
+same reason.</p>
+</details>
+</div>
+
+<div class="exercise">
+<h4>Exercise 22 &mdash; WHERE vs HAVING</h4>
+<p class="topic">Topic: WHERE filters rows before grouping; HAVING filters groups after aggregation</p>
+<p>(a) Find contracts signed on or after 2026-02-01. (b) Find shippers whose total sales value
+(<code>total_sop &times; usd_rate</code>) exceeds 700,000.</p>
+<details><summary>Hint</summary>
+<p>(a) filters individual rows before any grouping happens &mdash; use <code>WHERE</code>. (b) filters after
+<code>SUM()</code> has already been calculated per group &mdash; use <code>HAVING</code>, since
+<code>WHERE</code> can't reference an aggregate.</p>
+</details>
+<details><summary>Show Answer</summary>
+<p><strong>(a) WHERE &mdash; filters individual rows:</strong></p>
+<pre><code><strong>SELECT</strong> contract_no, shipper, contract_date
+<strong>FROM</strong> contracts
+<strong>WHERE</strong> contract_date &gt;= '2026-02-01';</code></pre>
+<table>
+<tr><th>contract_no</th><th>shipper</th><th>contract_date</th></tr>
+<tr><td>CN2002</td><td>Northfield Foods Ltd</td><td>2026-02-10</td></tr>
+<tr><td>CN2005</td><td>Sunrise Wholesale Group</td><td>2026-02-20</td></tr>
+<tr><td>CN2004</td><td>Coastal Mart Distributors</td><td>2026-03-01</td></tr>
+<tr><td>CN2006</td><td>Pacific Grain Partners</td><td>2026-03-10</td></tr>
+</table>
+<p><strong>(b) HAVING &mdash; filters groups after aggregation:</strong></p>
+<pre><code><strong>SELECT</strong> shipper, <strong>SUM</strong>(total_sop * usd_rate) <strong>AS</strong> total_sales_value
+<strong>FROM</strong> contracts
+<strong>GROUP BY</strong> shipper
+<strong>HAVING</strong> <strong>SUM</strong>(total_sop * usd_rate) &gt; 700000;</code></pre>
+<table>
+<tr><th>shipper</th><th>total_sales_value</th></tr>
+<tr><td>Golden Harbor Trading LLC</td><td>850,000</td></tr>
+<tr><td>Coastal Mart Distributors</td><td>1,626,000</td></tr>
+</table>
+</details>
+</div>
+
+<div class="exercise">
+<h4>Exercise 23 &mdash; DISTINCT</h4>
+<p class="topic">Topic: DISTINCT &mdash; removes duplicate rows from the result</p>
+<p>List every shipper that appears in <code>contracts</code>, with no repeats.</p>
+<details><summary>Hint</summary>
+<p>Coastal Mart Distributors appears twice in <code>contracts</code> (two contracts) but should only show up once
+in this result.</p>
+</details>
+<details><summary>Show Answer</summary>
+<pre><code><strong>SELECT DISTINCT</strong> shipper <strong>FROM</strong> contracts;</code></pre>
+<table>
+<tr><th>shipper</th></tr>
+<tr><td>Golden Harbor Trading LLC</td></tr>
+<tr><td>Northfield Foods Ltd</td></tr>
+<tr><td>Coastal Mart Distributors</td></tr>
+<tr><td>Sunrise Wholesale Group</td></tr>
+<tr><td>Pacific Grain Partners</td></tr>
+</table>
+<p>6 contract rows in, 5 distinct shippers out &mdash; <code>DISTINCT</code> collapsed the Coastal Mart Distributors
+duplicate.</p>
+</details>
+</div>
+
+<div class="exercise">
+<h4>Exercise 24 &mdash; NULL handling</h4>
+<p class="topic">Topic: NULL handling &mdash; NULL means unknown/missing, not zero</p>
+<p>Using the LEFT JOIN result from Exercise 2, replace any <code>NULL</code> <code>damaged_qty</code> with 0 so
+the column is always a usable number.</p>
+<details><summary>Hint</summary>
+<p><code>COALESCE(value, fallback)</code> returns the first non-<code>NULL</code> value it finds &mdash; treating
+"no damage record" as "zero damage."</p>
+</details>
+<details><summary>Show Answer</summary>
+<pre><code><strong>SELECT</strong> c.contract_no, c.rm_description, <strong>COALESCE</strong>(d.damaged_qty, 0) <strong>AS</strong> damaged_qty
+<strong>FROM</strong> contracts c
+<strong>LEFT JOIN</strong> inventory_damage d <strong>ON</strong> c.contract_no = d.contract_no;</code></pre>
+<table>
+<tr><th>contract_no</th><th>rm_description</th><th>damaged_qty</th></tr>
+<tr><td>CN2001</td><td>Premium Long Grain Rice</td><td>50</td></tr>
+<tr><td>CN2001</td><td>Premium Long Grain Rice</td><td>20</td></tr>
+<tr><td>CN2002</td><td>Premium Long Grain Rice</td><td>0</td></tr>
+<tr><td>CN2003</td><td>Aromatic Basmati Rice</td><td>100</td></tr>
+<tr><td>CN2004</td><td>Aromatic Basmati Rice</td><td>0</td></tr>
+<tr><td>CN2005</td><td>Golden Sella Rice</td><td>30</td></tr>
+<tr><td>CN2006</td><td>Creamy Sella Rice</td><td>0</td></tr>
+</table>
+<p>This is exactly the trick used inside the Part 3 final query to make sure a contract with no damage records
+doesn't break the <code>pending_sop</code> subtraction.</p>
+</details>
+</div>
+
+<div class="exercise">
+<h4>Exercise 25 &mdash; Data types</h4>
+<p class="topic">Topic: Data types &mdash; choosing the right type avoids rounding and comparison bugs</p>
+<p>Match each column below to the data type it should be stored as, and explain in one sentence why
+<code>usd_rate</code> should never be stored as plain text.</p>
+<details><summary>Hint</summary>
+<p>Money/rate columns need a type that supports exact decimal arithmetic &mdash; typically
+<code>DECIMAL</code>/<code>NUMERIC</code>, not <code>FLOAT</code> (which can introduce rounding errors) and
+never text.</p>
+</details>
+<details><summary>Show Answer</summary>
+<table>
+<tr><th>Column</th><th>Recommended type</th><th>Why</th></tr>
+<tr><td>contract_no</td><td>VARCHAR</td><td>Text identifier, never used in arithmetic</td></tr>
+<tr><td>contract_date</td><td>DATE</td><td>Enables date comparisons and range filters</td></tr>
+<tr><td>total_sop</td><td>INT</td><td>Whole-number quantity</td></tr>
+<tr><td>usd_rate</td><td>DECIMAL(10,2)</td><td>Exact decimal arithmetic for money, no rounding drift</td></tr>
+<tr><td>price_adjustment_pct</td><td>DECIMAL(5,4)</td><td>Small, precise fraction (e.g. 0.02)</td></tr>
+</table>
+<p>If <code>usd_rate</code> were <code>VARCHAR</code>, the database couldn't sum, compare, or calculate with it
+without first converting it &mdash; and a text comparison like <code>'900' &gt; '860'</code> can even sort
+incorrectly, because text compares character by character, not as a number.</p>
+</details>
+</div>
+
+<div class="exercise">
+<h4>Exercise 26 &mdash; Subqueries</h4>
+<p class="topic">Topic: Subqueries &mdash; a query nested inside another query</p>
+<p>Find every contract whose <code>usd_rate</code> is above the overall average <code>usd_rate</code> across all
+contracts.</p>
+<details><summary>Hint</summary>
+<p>Calculate the average in a subquery first (<code>SELECT AVG(usd_rate) FROM contracts</code>), then compare
+each row's <code>usd_rate</code> to that single value.</p>
+</details>
+<details><summary>Show Answer</summary>
+<pre><code><strong>SELECT</strong> contract_no, shipper, usd_rate
+<strong>FROM</strong> contracts
+<strong>WHERE</strong> usd_rate &gt; (<strong>SELECT</strong> <strong>AVG</strong>(usd_rate) <strong>FROM</strong> contracts);</code></pre>
+<p>Overall average usd_rate = (850+860+900+910+940+920) / 6 = 896.67</p>
+<table>
+<tr><th>contract_no</th><th>shipper</th><th>usd_rate</th></tr>
+<tr><td>CN2003</td><td>Coastal Mart Distributors</td><td>900</td></tr>
+<tr><td>CN2004</td><td>Coastal Mart Distributors</td><td>910</td></tr>
+<tr><td>CN2005</td><td>Sunrise Wholesale Group</td><td>940</td></tr>
+<tr><td>CN2006</td><td>Pacific Grain Partners</td><td>920</td></tr>
+</table>
+</details>
+</div>
+
+<div class="exercise">
+<h4>Exercise 27 &mdash; CTEs (WITH)</h4>
+<p class="topic">Topic: CTEs &mdash; a named, temporary result set that makes a query easier to read</p>
+<p>Using a CTE, find contracts whose <code>sales_value</code> (<code>total_sop &times; usd_rate</code>) is above
+700,000, without repeating that calculation in a <code>WHERE</code> clause.</p>
+<details><summary>Hint</summary>
+<p>Name the calculation once inside a <code>WITH</code> block, then filter against that name in the outer
+<code>SELECT</code> &mdash; the same pattern used for <code>damage_totals</code> in Part 3.</p>
+</details>
+<details><summary>Show Answer</summary>
+<pre><code><strong>WITH</strong> contract_sales <strong>AS</strong> (
+  <strong>SELECT</strong> contract_no, shipper, total_sop * usd_rate <strong>AS</strong> sales_value
+  <strong>FROM</strong> contracts
+)
+<strong>SELECT</strong> * <strong>FROM</strong> contract_sales <strong>WHERE</strong> sales_value &gt; 700000;</code></pre>
+<table>
+<tr><th>contract_no</th><th>shipper</th><th>sales_value</th></tr>
+<tr><td>CN2001</td><td>Golden Harbor Trading LLC</td><td>850,000</td></tr>
+<tr><td>CN2003</td><td>Coastal Mart Distributors</td><td>1,080,000</td></tr>
+</table>
+<p>A CTE isn't a different feature from a subquery &mdash; it's the same idea, just named and placed up front so
+the main query reads top-to-bottom instead of nesting parentheses inside parentheses.</p>
+</details>
+</div>
+
+<h2 id="cheatsheet">Cheat Sheet</h2>
+<table>
+<tr><th>Use this...</th><th>...when you want to</th></tr>
+<tr><td><strong>INNER JOIN</strong></td><td>Keep only rows that match in both tables</td></tr>
+<tr><td><strong>LEFT JOIN</strong></td><td>Keep every row from the left table, even without a match on the right</td></tr>
+<tr><td><strong>RIGHT JOIN</strong></td><td>Keep every row from the right table, even without a match on the left</td></tr>
+<tr><td><strong>FULL JOIN</strong></td><td>Keep every row from both tables, matched or not</td></tr>
+<tr><td><strong>CROSS JOIN</strong></td><td>Combine every row of one table with every row of another (no matching condition)</td></tr>
+<tr><td><strong>SELF JOIN</strong></td><td>Join a table to itself to compare rows within the same table</td></tr>
+<tr><td><strong>GROUP BY</strong></td><td>Collapse many rows into one summary row per group</td></tr>
+<tr><td><strong>HAVING</strong></td><td>Filter groups after aggregation (WHERE filters rows before grouping)</td></tr>
+<tr><td><strong>Window function (<code>OVER</code>)</strong></td><td>Compute SUM/COUNT/MIN/MAX/AVG/RANK/LAG/LEAD across a group <em>without</em> collapsing rows</td></tr>
+<tr><td><strong>DISTINCT</strong></td><td>Remove duplicate rows from a result</td></tr>
+<tr><td><strong>COALESCE</strong></td><td>Replace a NULL with a fallback value</td></tr>
+<tr><td><strong>Subquery / CTE (<code>WITH</code>)</strong></td><td>Break a complex calculation into a named, reusable step</td></tr>
+<tr><td><strong>Primary Key</strong></td><td>Guarantee a column uniquely identifies each row</td></tr>
+<tr><td><strong>Foreign Key</strong></td><td>Guarantee a column's value always exists in another table's Primary Key</td></tr>
+<tr><td><strong>Index</strong></td><td>Speed up lookups/joins on a column you filter or join on often</td></tr>
+</table>
+
+<footer>
+  <p>Case study data is entirely fictional (mocked company and product names), inspired by a generic rice trading business.
+  See also: <a class="pagelink" href="medallion-architecture.html">ETL &amp; Medallion Architecture</a></p>
+</footer>
+
+</body>
+</html>
